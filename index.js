@@ -30,8 +30,14 @@ app.route('/patient')
   try {
     const pool = await poolPromise
     const data = await pool.request()
-      .query('select primaryKey, ФИО from Пациент')
-    res.json({data: data.recordset})
+      .input('name', req.body['ФИО'])
+      .input('birthdate', req.body['ДатаРождения'])
+      .query(`
+        insert into Пациент (primaryKey, ФИО, ДатаРождения)
+        output Inserted.primaryKey
+        values (newid(), @name, @birthdate)
+      `)
+    res.json({data: data.recordset[0]})
   } catch (err) {
     res.status(500)
     res.send(err.message)
@@ -60,7 +66,19 @@ app.route('/patient/:id')
       .input('sex', req.body["Пол"])
       .input('birthdate', req.body["ДатаРождения"])
       .input('phone', req.body["Телефон"])
-      .query('update Пациент set ФИО = @name, Пол = @sex, ДатаРождения = @birthdate, Телефон = @phone where primaryKey = @id')
+      .input('address', req.body["АдресПроп"])
+      .input('flat', req.body["Квартира"])
+      .query(`
+        update Пациент
+        set
+        ФИО = @name,
+        Пол = @sex,
+        ДатаРождения = @birthdate,
+        Телефон = @phone,
+        АдресПроп = @address,
+        Квартира = @flat
+        where primaryKey = @id
+      `)
     res.json({data})
   } catch (err) {
     res.status(500)
@@ -96,8 +114,6 @@ app.route('/observation/:id')
   }
 })
 
-// specialist 452F1FBD-58DB-42C8-B07D-B94E7586DDCA
-
 app.route('/observation/:id/indicator')
 .get(async (req, res) => {
   try {
@@ -110,13 +126,6 @@ app.route('/observation/:id/indicator')
         from ИнтегральныйПоказатель as ip
         where ip.Сотрудник = @specialist
       `)
-      // .query(`
-      //   select oip.*, ip.Наименование, hip.Описание
-      //   from ОценкаИнтегральногоПоказателя as oip
-      //   join ИнтегральныйПоказатель as ip on (oip.ИнтегральныйПоказатель = ip.primaryKey)
-      //   join ХарактеристикаИнтегральногоПоказателя as hip on (hip.primaryKey = oip.Характеристика)
-      //   where Обследование = @id
-      // `)
     res.json({data: data.recordset})
   } catch (err) {
     res.status(500)
@@ -131,7 +140,6 @@ app.route('/observation')
     const data = await pool.request()
       .input('id', req.body.id)
       .query('insert into Обследование (primaryKey, Пациент, Дата) output Inserted.primaryKey values (newid(), @id, getdate())')
-      // .query('select * from ОценкаИнтегральногоПоказателя as a join ИнтегральныйПоказатель as b on (a.ИнтегральныйПоказатель = b.primaryKey) where Обследование = @id')
     res.json({data: data.recordset[0]})
   } catch (err) {
     res.status(500)
@@ -184,6 +192,38 @@ app.route('/indicator')
   }
 })
 
+app.route('/indicator/:id')
+.get(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+      .input("id", req.params.id)
+      .query('select * from ИнтегральныйПоказатель where primaryKey = @id')
+    res.json({data: data.recordset[0]})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
+.patch(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+      .input("id", req.body.primaryKey)
+      .input("name", req.body['Наименование'])
+      .query(`
+        update ИнтегральныйПоказатель
+        set
+        Наименование = @name
+        where primaryKey = @id
+      `)
+    res.json({data: data.recordset})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
+
 app.route('/specialist')
 .get(async (req, res) => {
   try {
@@ -213,7 +253,6 @@ app.route('/specialist/:id')
 .patch(async (req, res) => {
   try {
     const pool = await poolPromise
-    console.log(req.body)
     const data = await pool.request()
       .input('id', req.body.primaryKey)
       .input('name', req.body["ФИО"])
@@ -255,6 +294,38 @@ app.route('/job')
   }
 })
 
+app.route('/job/:id')
+.get(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+      .input('id', req.params.id)
+      .query('select * from Должность where primaryKey = @id')
+    res.json({data: data.recordset[0]})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
+.patch(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+      .input('id', req.body.primaryKey)
+      .input('name', req.body["Наименование"])
+      .query(`
+        update Должность
+        set
+        Наименование = @name
+        where primaryKey = @id
+      `)
+    res.json({data})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
+
 app.route('/division')
 .get(async (req, res) => {
   try {
@@ -268,26 +339,55 @@ app.route('/division')
   }
 })
 
-// specialist 452F1FBD-58DB-42C8-B07D-B94E7586DDCA
+app.route('/evaluation')
+.get(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+      .input('observation_id', req.query.observation_id)
+      .query(`
+        select *
+        from ОценкаИнтегральногоПоказателя
+        where Обследование = @observation_id
+      `)
+    res.json({data: data.recordset})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
+.post(async (req, res) => {
+  try {
+    const pool = await poolPromise
+    const data = await pool.request()
+    .input('observation_id', req.body.observation_id)
+    .input('indicator_id', req.body.indicator_id)
+    .input('attribute_id', req.body.attribute_id)
+    .input('evaluation_id', req.body.evaluation_id)
+    .query(`
+        insert into ОценкаИнтегральногоПоказателя
+        (primaryKey, Обследование, ИнтегральныйПоказатель, Характеристика, CreateTime)
+        values
+        (newid(), @observation_id, @indicator_id, @attribute_id, getdate())
+      `)
+    res.json({data: data.recordset})
+  } catch (err) {
+    res.status(500)
+    res.send(err.message)
+  }
+})
 
 app.route('/test')
 .get(async (req, res) => {
   try {
     const pool = await poolPromise
     const data = await pool.request()
-      .input('id', req.params.id)
-      .input('specialist', req.query.specialist)
+      .input('id', req.query.id)
       .query(`
         select *
-        from Сотрудник
+        from ОценкаИнтегральногоПоказателя
+        where Обследование = @id
       `)
-      // .query(`
-      //   select oip.*, ip.Наименование, hip.Описание
-      //   from ОценкаИнтегральногоПоказателя as oip
-      //   join ИнтегральныйПоказатель as ip on (oip.ИнтегральныйПоказатель = ip.primaryKey)
-      //   join ХарактеристикаИнтегральногоПоказателя as hip on (hip.primaryKey = oip.Характеристика)
-      //   where Обследование = @id
-      // `)
     res.json({data: data.recordset})
   } catch (err) {
     res.status(500)
